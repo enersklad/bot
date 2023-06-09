@@ -22,9 +22,19 @@ def low_high_price_answer(message: Message, data: Dict, user: str) -> None:
     """
 
     amount_nights = int((data['end_date'] - data['start_date']).total_seconds() / 86400)
-    sort_order = 'дешёвых' if data.get('last_command') == 'lowprice' else 'дорогих'
+    if data.get('last_command') == 'lowprice':
+        sort_order_text = f"самых дешевых отелей в городе <b>{data['city']}</b>\n"
+        sort_index = 1
+    elif data.get('last_command') == 'review':
+        sort_order_text = f"отелей с лучшими отзывами посетителей в городе <b>{data['city']}</b>\n"
+        sort_index = 1
+    else:
+        sort_order_text = f"В ценовом диапазоне <b>от {data['start_price']}$ до {data['end_price']}$</b>\n" \
+                f"Максимальная удаленность от центра: <b>{data['end_distance']} Км</b>\n"
+        sort_index = 2
+
     reply_str = f" Ок, ищем: <b>топ {data['amount_hotels']}</b> " \
-                f"самых {sort_order} отелей в городе <b>{data['city']}</b>\n" \
+                f"{sort_order_text}" \
                 f"{f'Нужно загрузить фото' if data['need_photo'] else f'Фото не нужны'}" \
                 f" — <b>{data['amount_photo']}</b> штук\n" \
                 f"Длительность поездки: <b>{amount_nights} ноч.</b> " \
@@ -33,12 +43,32 @@ def low_high_price_answer(message: Message, data: Dict, user: str) -> None:
 
     hotels = parse_hotels(data)
     if hotels:
-        result_dict = process_hotels_info(hotels, amount_nights)
-        if result_dict:
-            show_info(message=message, request_data=data, result_data=result_dict, user=user,
-                      amount_nights=amount_nights)
-        else:
-            bot.send_message(message.chat.id, '⚠️ Не удалось загрузить информацию по отелям города!')
+        result_dict = process_hotels_info(hotels)
+        if sort_index == 1:
+            if result_dict:
+                show_info(message=message, request_data=data, result_data=result_dict, user=user,
+                          amount_nights=amount_nights)
+            else:
+                bot.send_message(message.chat.id, '⚠️ Не удалось загрузить информацию по отелям города!')
+
+        elif sort_index == 2:
+            if result_dict:
+                new_result_dict = dict()
+                for hotel_id, hotel_data in result_dict.items():
+                    if len(new_result_dict.keys()) >= data.get('amount_hotels'):
+                        break
+                    current_distance = hotel_data.get('distance_city_center')
+                    if not current_distance:
+                        continue
+                    if current_distance <= data.get('end_distance'):
+                        new_result_dict[hotel_id] = hotel_data
+                if new_result_dict:
+                    show_info(message=message, request_data=data, result_data=new_result_dict, user=user,
+                              amount_nights=amount_nights)
+                else:
+                    bot.send_message(message.chat.id, '⚠️ Ничего не нашлось! Измените критерии поиска!')
+            else:
+                bot.send_message(message.chat.id, '⚠️ По вашему запрос ничего не нашлось! Измените критерии поиска!')
     else:
         bot.send_message(message.chat.id, '⚠️ Ошибка. Попробуйте ещё раз!')
 
@@ -62,54 +92,6 @@ def get_photos(message: Message, hotel_id: int, amount_photo: int) -> Union[List
             return photos_list
     bot.send_message(message.chat.id, '⚠️ Ошибка загрузки фото.')
     return None
-
-
-@logger.catch()
-def best_deal_answer(message: Message, data: Dict, user: str) -> None:
-    """
-    Функция делает запросы на парсинг отелей и на обработку полученных данных.
-    Если данные получены - вызывает функцию show_info.
-    Если в результате какого-либо из запросов получает None - показывает сообщение об ошибке.
-
-    :param message: Сообщение Telegram
-    :param data: словарь с данными запроса (город, даты поездки, нужны ли фото)
-    :param user: имя пользователя Telegram (username)
-    """
-
-    amount_nights = int((data['end_date'] - data['start_date']).total_seconds() / 86400)
-    reply_str = f"Ок, ищем: <b>топ {data['amount_hotels']}</b> отелей в городе <b>{data['city']}</b>\n" \
-                f"В ценовом диапазоне <b>от {data['start_price']}$ до {data['end_price']}$</b>\n" \
-                f"Максимальная удаленность от центра: <b>{data['end_distance']} Км</b>\n" \
-                f"{f'Нужно загрузить фото' if data['need_photo'] else f'Фото не нужны'}" \
-                f" — <b>{data['amount_photo']}</b> штук\n" \
-                f"Длительность поездки: <b>{amount_nights} ноч.</b> " \
-                f"(с {data['start_date']} по {data['end_date']})."
-    bot.send_message(message.chat.id, reply_str, parse_mode="html")
-
-    hotels = parse_hotels(data)
-    if hotels:
-        pre_result_dict = process_hotels_info(hotels, amount_nights)
-
-        if pre_result_dict:
-            result_dict = dict()
-            for hotel_id, hotel_data in pre_result_dict.items():
-                if len(result_dict.keys()) >= data.get('amount_hotels'):
-                    break
-                current_distance = hotel_data.get('distance_city_center')
-                if not current_distance:
-                    continue
-                if current_distance <= data.get('end_distance'):
-                    result_dict[hotel_id] = hotel_data
-
-            if result_dict:
-                show_info(message=message, request_data=data, result_data=result_dict, user=user,
-                          amount_nights=amount_nights)
-            else:
-                bot.send_message(message.chat.id, '⚠️ Ничего не нашлось! Измените критерии поиска!')
-        else:
-            bot.send_message(message.chat.id, '⚠️ По вашему запрос ничего не нашлось! Измените критерии поиска!')
-    else:
-        bot.send_message(message.chat.id, '⚠️ Ошибка. Ничего не нашлось!')
 
 
 @save_history

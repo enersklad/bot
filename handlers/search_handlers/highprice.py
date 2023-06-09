@@ -5,7 +5,7 @@ from handlers import survey_handlers
 from loguru import logger
 
 
-@bot.message_handler(commands=['highprice'])
+@bot.message_handler(commands=['review'])
 @logger.catch
 def bot_low_price(message: Message) -> None:
     """
@@ -19,4 +19,4 @@ def bot_low_price(message: Message) -> None:
     bot.set_state(message.from_user.id, UsersStates.cities, message.chat.id)
     bot.send_message(message.from_user.id, 'Введите город')
     with bot.retrieve_data(message.from_user.id, message.chat.id) as data:
-        data['last_command'] = 'highprice'
+        data['last_command'] = 'review'
